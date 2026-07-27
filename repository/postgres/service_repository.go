@@ -51,5 +51,5 @@ func (repo *ServiceRepository) ListActive(ctx context.Context) ([]domain.Service
 		return nil, err
 	}
 
-	return services, nil
+	return services, err
 }

@@ -66,8 +66,9 @@ func main() {
 
 	//repository
 	serviceRepository := postgres.NewServiceRepository(db)
+	barberRepository := postgres.NewBarberRepository(db)
 
-	bookingHandler := booking.NewHandler(serviceRepository)
+	bookingHandler := booking.NewHandler(serviceRepository, barberRepository)
 	booking.RegisterHandler(b, bookingHandler)
 
 	//start
