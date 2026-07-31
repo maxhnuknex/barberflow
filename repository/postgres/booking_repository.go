@@ -1,0 +1,189 @@
+package postgres
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/maxhnucknex/barberflow/internal/domain"
+)
+
+type BookingRepository struct {
+	db *pgxpool.Pool
+}
+
+func NewBookingRepository(db *pgxpool.Pool) *BookingRepository {
+	return &BookingRepository{
+		db: db,
+	}
+}
+
+func (repo *BookingRepository) GetTimelotByBarber(
+	ctx context.Context,
+	barberID int64,
+) ([]domain.TimeInterval, error) {
+	const query = `
+		SELECT starts_at, ends_at
+		FROM bookings
+		WHERE barber_id = $1
+	`
+	rows, err := repo.db.Query(ctx, query, barberID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	times := make([]domain.TimeInterval, 0)
+	for rows.Next() {
+		var time domain.TimeInterval
+
+		if err := rows.Scan(
+			&time.StartsAt,
+			&time.EndsAt,
+		); err != nil {
+			return nil, err
+		}
+
+		times = append(times, time)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return times, nil
+}
+
+func (repo *BookingRepository) PostBooking(
+	ctx context.Context,
+	telegramUserID int64,
+	username string,
+	firstName string,
+	serviceID int64,
+	barberID int64,
+	time domain.TimeInterval,
+) (domain.Booking, error) {
+	const query = `
+		WITH customer AS (
+			INSERT INTO customers (telegram_user_id, username, first_name)
+			VALUES ($1, $2, $3)
+			ON CONFLICT (telegram_user_id) DO UPDATE
+				SET username = EXCLUDED.username,
+					first_name = EXCLUDED.first_name
+			RETURNING id
+		),
+		created_booking AS (
+			INSERT INTO bookings (customer_id, service_id, barber_id, starts_at, ends_at)
+			SELECT customer.id, $4, $5, $6, $7
+			FROM customer
+			RETURNING id, customer_id, service_id, barber_id, starts_at, ends_at, created_at
+		)
+		SELECT
+			cb.id,
+			cb.customer_id,
+			cb.service_id,
+			s.name,
+			cb.barber_id,
+			b.name,
+			cb.starts_at,
+			cb.ends_at,
+			s.price_minor_units,
+			cb.created_at
+		FROM created_booking cb
+		JOIN services s ON s.id = cb.service_id
+		JOIN barbers b ON b.id = cb.barber_id
+	`
+
+	var booking domain.Booking
+
+	if err := repo.db.QueryRow(
+		ctx,
+		query,
+		telegramUserID,
+		username,
+		firstName,
+		serviceID,
+		barberID,
+		time.StartsAt,
+		time.EndsAt,
+	).Scan(
+		&booking.ID,
+		&booking.CustomerID,
+		&booking.ServiceID,
+		&booking.ServiceName,
+		&booking.BarberID,
+		&booking.BarberName,
+		&booking.StartsAt,
+		&booking.EndsAt,
+		&booking.PriceMinorUnits,
+		&booking.CreatedAt,
+	); err != nil {
+		return domain.Booking{}, err
+	}
+
+	return booking, nil
+}
+
+func (repo *BookingRepository) ListMyBooking(
+	ctx context.Context,
+	telegramUserID int64,
+) ([]domain.Booking, error) {
+	const query = `
+		SELECT
+			b.id,
+			b.customer_id,
+			b.service_id,
+			s.name,
+			b.barber_id,
+			br.name,
+			b.starts_at,
+			b.ends_at,
+			s.price_minor_units,
+			b.created_at
+		FROM bookings b
+		JOIN customers c
+			ON c.id = b.customer_id
+		JOIN services s
+			ON s.id = b.service_id
+		JOIN barbers br
+			ON br.id = b.barber_id
+		WHERE c.telegram_user_id = $1
+		  AND b.starts_at >= NOW()
+		ORDER BY b.starts_at
+	`
+
+	rows, err := repo.db.Query(ctx, query, telegramUserID)
+	if err != nil {
+		return nil, fmt.Errorf("list customer bookings: %w", err)
+	}
+	defer rows.Close()
+
+	bookings := make([]domain.Booking, 0)
+
+	for rows.Next() {
+		var booking domain.Booking
+
+		if err := rows.Scan(
+			&booking.ID,
+			&booking.CustomerID,
+			&booking.ServiceID,
+			&booking.ServiceName,
+			&booking.BarberID,
+			&booking.BarberName,
+			&booking.StartsAt,
+			&booking.EndsAt,
+			&booking.PriceMinorUnits,
+			&booking.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan customer booking: %w", err)
+		}
+
+		bookings = append(bookings, booking)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate customer bookings: %w", err)
+	}
+
+	return bookings, nil
+}

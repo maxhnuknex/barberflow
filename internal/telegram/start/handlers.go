@@ -34,7 +34,7 @@ func (h *Handler) Handle(
 	}
 
 	_, err := b.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID:      update.Message.Chat.ID,
+		ChatID:      chatID(update),
 		Text:        "Добро пожаловать в BarberFlow",
 		ReplyMarkup: keyboard,
 	})
@@ -42,4 +42,12 @@ func (h *Handler) Handle(
 		// логирование добавим отдельно
 		return
 	}
+}
+
+func chatID(update *models.Update) int64 {
+	if update.Message != nil {
+		return update.Message.Chat.ID
+	}
+
+	return update.CallbackQuery.Message.Message.Chat.ID
 }

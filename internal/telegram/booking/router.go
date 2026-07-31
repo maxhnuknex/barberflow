@@ -18,4 +18,25 @@ func RegisterHandler(b *bot.Bot, h *Handler) {
 		bot.MatchTypePrefix,
 		h.HandlerListBarber,
 	)
+
+	b.RegisterHandler(
+		bot.HandlerTypeCallbackQueryData,
+		"booking:barber",
+		bot.MatchTypePrefix,
+		h.HandlerListTimeBarberActive,
+	)
+
+	b.RegisterHandler(
+		bot.HandlerTypeCallbackQueryData,
+		"booking:time",
+		bot.MatchTypePrefix,
+		h.HandlerBookingTime,
+	)
+
+	b.RegisterHandler(
+		bot.HandlerTypeCallbackQueryData,
+		"bookings:list",
+		bot.MatchTypeExact,
+		h.HandlerListMyBooking,
+	)
 }

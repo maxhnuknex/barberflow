@@ -29,14 +29,18 @@ func serviceKeyboard(services []domain.Service) *models.InlineKeyboardMarkup {
 	}
 }
 
-func barberKeyboard(barbers []domain.Barber) *models.InlineKeyboardMarkup {
+func barberKeyboard(
+	serviceID int64,
+	barbers []domain.Barber,
+) *models.InlineKeyboardMarkup {
 	rows := make([][]models.InlineKeyboardButton, 0, len(barbers))
 
 	for _, barber := range barbers {
 		button := models.InlineKeyboardButton{
 			Text: barber.Name,
 			CallbackData: fmt.Sprintf(
-				"booking:barber:%d",
+				"booking:barber:%d:%d",
+				serviceID,
 				barber.ID,
 			),
 		}
@@ -45,6 +49,84 @@ func barberKeyboard(barbers []domain.Barber) *models.InlineKeyboardMarkup {
 			button,
 		})
 	}
+
+	return &models.InlineKeyboardMarkup{
+		InlineKeyboard: rows,
+	}
+}
+
+func freeSlotKeyboard(
+	barberID int64,
+	serviceID int64,
+	freeSlots []domain.TimeInterval,
+) *models.InlineKeyboardMarkup {
+	rows := make([][]models.InlineKeyboardButton, 0, len(freeSlots))
+
+	for _, slot := range freeSlots {
+		button := models.InlineKeyboardButton{
+			Text: fmt.Sprintf(
+				"%s-%s",
+				slot.StartsAt.Format("15:04"),
+				slot.EndsAt.Format("15:04"),
+			),
+			CallbackData: fmt.Sprintf(
+				"booking:time:%d:%d:%d:%d",
+				serviceID,
+				barberID,
+				slot.StartsAt.Unix(),
+				slot.EndsAt.Unix(),
+			),
+		}
+
+		rows = append(rows, []models.InlineKeyboardButton{
+			button,
+		})
+	}
+
+	return &models.InlineKeyboardMarkup{
+		InlineKeyboard: rows,
+	}
+}
+
+func mainMenuKeyboard() *models.InlineKeyboardMarkup {
+	return &models.InlineKeyboardMarkup{
+		InlineKeyboard: [][]models.InlineKeyboardButton{
+			{
+				{
+					Text:         "Главное меню",
+					CallbackData: "/start",
+				},
+			},
+		},
+	}
+}
+
+func keyboardListMyBooking(
+	bookings []domain.Booking,
+) *models.InlineKeyboardMarkup {
+	rows := make([][]models.InlineKeyboardButton, 0, len(bookings)+1)
+
+	for _, booking := range bookings {
+		button := models.InlineKeyboardButton{
+			Text: fmt.Sprintf(
+				"%s %s",
+				booking.ServiceName,
+				booking.StartsAt.Format("02.01 15:04"),
+			),
+			CallbackData: "bookings:list",
+		}
+
+		rows = append(rows, []models.InlineKeyboardButton{
+			button,
+		})
+	}
+
+	rows = append(rows, []models.InlineKeyboardButton{
+		{
+			Text:         "Главное меню",
+			CallbackData: "/start",
+		},
+	})
 
 	return &models.InlineKeyboardMarkup{
 		InlineKeyboard: rows,

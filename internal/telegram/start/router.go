@@ -9,4 +9,11 @@ func RegisterRoutes(b *bot.Bot, h *Handler) {
 		bot.MatchTypeExact,
 		h.Handle,
 	)
+
+	b.RegisterHandler(
+		bot.HandlerTypeCallbackQueryData,
+		"/start",
+		bot.MatchTypeExact,
+		h.Handle,
+	)
 }

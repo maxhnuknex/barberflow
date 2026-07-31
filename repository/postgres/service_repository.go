@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/maxhnucknex/barberflow/internal/domain"
@@ -15,6 +16,28 @@ func NewServiceRepository(db *pgxpool.Pool) *ServiceRepository {
 	return &ServiceRepository{
 		db: db,
 	}
+}
+
+func (repo *ServiceRepository) GetByID(ctx context.Context, id int64) (domain.Service, error) {
+	const query = `
+		SELECT id, name, duration_minutes, price_minor_units, active, created_at
+		FROM services
+		WHERE id = $1
+	`
+
+	var service domain.Service
+	if err := repo.db.QueryRow(ctx, query, id).Scan(
+		&service.ID,
+		&service.Name,
+		&service.DurationMinutes,
+		&service.PriceMinorUnits,
+		&service.Active,
+		&service.CreatedAt,
+	); err != nil {
+		return domain.Service{}, fmt.Errorf("get service by id: %w", err)
+	}
+
+	return service, nil
 }
 
 func (repo *ServiceRepository) ListActive(ctx context.Context) ([]domain.Service, error) {
@@ -51,5 +74,5 @@ func (repo *ServiceRepository) ListActive(ctx context.Context) ([]domain.Service
 		return nil, err
 	}
 
-	return services, err
+	return services, nil
 }
