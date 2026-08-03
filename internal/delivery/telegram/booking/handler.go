@@ -28,10 +28,12 @@ func NewBookingHandler(
 type Service interface {
 	ListActive(ctx context.Context) ([]domain.Service, error)
 	ListBarberByService(ctx context.Context, id int64) ([]domain.Barber, error)
-	ListTimeBarberActive(
+	NextSevenDays() []time.Time
+	ListAvailableSlots(
 		ctx context.Context,
 		serviceID int64,
 		barberID int64,
+		selectedDate time.Time,
 	) ([]domain.TimeInterval, error)
 	PostBooking(
 		ctx context.Context,
@@ -42,10 +44,6 @@ type Service interface {
 		barberID int64,
 		time domain.TimeInterval,
 	) (domain.Booking, error)
-	ListMyBooking(
-		ctx context.Context,
-		telegramUserID int64,
-	) ([]domain.Booking, error)
 }
 
 func (h *Handler) HandlerListActive(
@@ -158,6 +156,64 @@ func (h *Handler) HandlerBookingTime(
 	}
 }
 
+func (h *Handler) HandleSelectDate(
+	ctx context.Context,
+	b *bot.Bot,
+	update *models.Update,
+) {
+	if update.CallbackQuery == nil {
+		return
+	}
+
+	const prefix = "booking:date:"
+
+	data := update.CallbackQuery.Data
+	rawValues := strings.TrimPrefix(data, prefix)
+
+	parts := strings.Split(rawValues, ":")
+	if len(parts) != 3 {
+		return
+	}
+
+	serviceID, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		return
+	}
+
+	barberID, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil {
+		return
+	}
+
+	selectedDate, err := time.ParseInLocation("2006-01-02", parts[2], moscowLocation())
+	if err != nil {
+		return
+	}
+
+	freeSlot, err := h.service.ListAvailableSlots(ctx, serviceID, barberID, selectedDate)
+	if err != nil {
+		return
+	}
+
+	keyboard := freeSlotKeyboard(
+		barberID,
+		serviceID,
+		freeSlot,
+	)
+
+	_, err = b.SendMessage(
+		ctx,
+		&bot.SendMessageParams{
+			ChatID:      update.CallbackQuery.Message.Message.Chat.ID,
+			Text:        "выберите время записи",
+			ReplyMarkup: keyboard,
+		},
+	)
+	if err != nil {
+		return
+	}
+}
+
 func (h *Handler) HandlerListBarber(
 	ctx context.Context,
 	b *bot.Bot,
@@ -217,22 +273,13 @@ func (h *Handler) HandlerListTimeBarberActive(
 		return
 	}
 
-	freeSlot, err := h.service.ListTimeBarberActive(ctx, serviceID, barberID)
-	if err != nil {
-		return
-	}
-
-	keyboard := freeSlotKeyboard(
-		barberID,
-		serviceID,
-		freeSlot,
-	)
+	keyboard := keyboardDate(serviceID, barberID, h.service.NextSevenDays())
 
 	_, err = b.SendMessage(
 		ctx,
 		&bot.SendMessageParams{
 			ChatID:      update.CallbackQuery.Message.Message.Chat.ID,
-			Text:        "выберите время записи",
+			Text:        "выберите дату записи",
 			ReplyMarkup: keyboard,
 		},
 	)
@@ -241,54 +288,11 @@ func (h *Handler) HandlerListTimeBarberActive(
 	}
 }
 
-func (h *Handler) HandlerListMyBooking(
-	ctx context.Context,
-	b *bot.Bot,
-	update *models.Update,
-) {
-	if update.CallbackQuery == nil {
-		return
-	}
-
-	telegramId := update.CallbackQuery.From.ID
-
-	bookings, err := h.service.ListMyBooking(ctx, telegramId)
+func moscowLocation() *time.Location {
+	loc, err := time.LoadLocation("Europe/Moscow")
 	if err != nil {
-		return
+		return time.FixedZone("Europe/Moscow", 3*60*60)
 	}
 
-	_, err = b.SendMessage(
-		ctx,
-		&bot.SendMessageParams{
-			ChatID:      update.CallbackQuery.Message.Message.Chat.ID,
-			Text:        myBookingsText(bookings),
-			ReplyMarkup: keyboardListMyBooking(bookings),
-		},
-	)
-	if err != nil {
-		return
-	}
-}
-
-func myBookingsText(bookings []domain.Booking) string {
-	if len(bookings) == 0 {
-		return "У вас пока нет активных записей."
-	}
-
-	var builder strings.Builder
-	builder.WriteString("Ваши записи:")
-
-	for i, booking := range bookings {
-		fmt.Fprintf(
-			&builder,
-			"\n\n%d. Услуга: %s\nМастер: %s\nВремя: %s-%s",
-			i+1,
-			booking.ServiceName,
-			booking.BarberName,
-			booking.StartsAt.Format("02.01.2006 15:04"),
-			booking.EndsAt.Format("15:04"),
-		)
-	}
-
-	return builder.String()
+	return loc
 }

@@ -28,15 +28,16 @@ func RegisterHandler(b *bot.Bot, h *Handler) {
 
 	b.RegisterHandler(
 		bot.HandlerTypeCallbackQueryData,
+		"booking:date",
+		bot.MatchTypePrefix,
+		h.HandleSelectDate,
+	)
+
+	b.RegisterHandler(
+		bot.HandlerTypeCallbackQueryData,
 		"booking:time",
 		bot.MatchTypePrefix,
 		h.HandlerBookingTime,
 	)
 
-	b.RegisterHandler(
-		bot.HandlerTypeCallbackQueryData,
-		"bookings:list",
-		bot.MatchTypeExact,
-		h.HandlerListMyBooking,
-	)
 }

@@ -2,6 +2,7 @@ package booking
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/go-telegram/bot/models"
 	"github.com/maxhnucknex/barberflow/internal/domain"
@@ -42,6 +43,34 @@ func barberKeyboard(
 				"booking:barber:%d:%d",
 				serviceID,
 				barber.ID,
+			),
+		}
+
+		rows = append(rows, []models.InlineKeyboardButton{
+			button,
+		})
+	}
+
+	return &models.InlineKeyboardMarkup{
+		InlineKeyboard: rows,
+	}
+}
+
+func keyboardDate(
+	serviceID int64,
+	barberID int64,
+	days []time.Time,
+) *models.InlineKeyboardMarkup {
+	rows := make([][]models.InlineKeyboardButton, 0, len(days))
+
+	for _, day := range days {
+		button := models.InlineKeyboardButton{
+			Text: day.Format("02.01.2006"),
+			CallbackData: fmt.Sprintf(
+				"booking:date:%d:%d:%s",
+				serviceID,
+				barberID,
+				day.Format("2006-01-02"),
 			),
 		}
 
@@ -98,37 +127,5 @@ func mainMenuKeyboard() *models.InlineKeyboardMarkup {
 				},
 			},
 		},
-	}
-}
-
-func keyboardListMyBooking(
-	bookings []domain.Booking,
-) *models.InlineKeyboardMarkup {
-	rows := make([][]models.InlineKeyboardButton, 0, len(bookings)+1)
-
-	for _, booking := range bookings {
-		button := models.InlineKeyboardButton{
-			Text: fmt.Sprintf(
-				"%s %s",
-				booking.ServiceName,
-				booking.StartsAt.Format("02.01 15:04"),
-			),
-			CallbackData: "bookings:list",
-		}
-
-		rows = append(rows, []models.InlineKeyboardButton{
-			button,
-		})
-	}
-
-	rows = append(rows, []models.InlineKeyboardButton{
-		{
-			Text:         "Главное меню",
-			CallbackData: "/start",
-		},
-	})
-
-	return &models.InlineKeyboardMarkup{
-		InlineKeyboard: rows,
 	}
 }
