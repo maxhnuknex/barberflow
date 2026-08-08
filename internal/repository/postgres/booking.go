@@ -81,6 +81,74 @@ func (repo *BookingRepository) GetByID(
 	return booking, nil
 }
 
+func (repo *BookingRepository) GetBookingsForReminder(ctx context.Context) ([]domain.Booking, error) {
+	const query = `
+		SELECT
+			b.id,
+			b.customer_id,
+			c.first_name,
+			COALESCE(c.username, ''),
+			c.telegram_user_id,
+			b.service_id,
+			s.name,
+			b.barber_id,
+			br.name,
+			b.starts_at,
+			b.ends_at,
+			s.price_minor_units,
+			b.created_at
+		FROM bookings b
+		JOIN customers c
+			ON c.id = b.customer_id
+		JOIN services s
+			ON s.id = b.service_id
+		JOIN barbers br
+			ON br.id = b.barber_id
+		WHERE b.starts_at > NOW()
+			AND b.starts_at <= NOW() + INTERVAL '2 hours'
+			AND b.reminder_sent_at IS NULL
+		ORDER BY b.starts_at
+	`
+
+	rows, err := repo.db.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("list bookings for reminder: %w", err)
+	}
+	defer rows.Close()
+
+	bookings := make([]domain.Booking, 0)
+
+	for rows.Next() {
+		var booking domain.Booking
+
+		if err := rows.Scan(
+			&booking.ID,
+			&booking.CustomerID,
+			&booking.CustomerName,
+			&booking.CustomerUsername,
+			&booking.TelegramUserId,
+			&booking.ServiceID,
+			&booking.ServiceName,
+			&booking.BarberID,
+			&booking.BarberName,
+			&booking.StartsAt,
+			&booking.EndsAt,
+			&booking.PriceMinorUnits,
+			&booking.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan booking for reminder: %w", err)
+		}
+
+		bookings = append(bookings, booking)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate bookings for reminder: %w", err)
+	}
+
+	return bookings, nil
+}
+
 func (repo *BookingRepository) GetTimelotByBarber(
 	ctx context.Context,
 	barberID int64,
@@ -325,4 +393,18 @@ func (repo *BookingRepository) ListMyBooking(
 	}
 
 	return bookings, nil
+}
+
+func (repo *BookingRepository) MarkReminderSent(ctx context.Context, bookingID int64) error {
+	const query = `
+		UPDATE bookings
+		SET reminder_sent_at = NOW()
+		WHERE id = $1
+	`
+
+	if _, err := repo.db.Exec(ctx, query, bookingID); err != nil {
+		return fmt.Errorf("mark reminder sent: %w", err)
+	}
+
+	return nil
 }

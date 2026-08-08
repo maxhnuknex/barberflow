@@ -8,6 +8,7 @@ type Booking struct {
 	CustomerID       int64
 	CustomerName     string
 	CustomerUsername string
+	TelegramUserId   int64
 	BarberID         int64
 	ServiceID        int64
 	BarberName       string

@@ -21,6 +21,7 @@ type BarberRepository interface {
 type BookingRepository interface {
 	Cancel(ctx context.Context, bookingID int64) error
 	GetByID(ctx context.Context, bookingID int64) (domain.Booking, error)
+	GetBookingsForReminder(ctx context.Context) ([]domain.Booking, error)
 	GetTimelotByBarber(
 		ctx context.Context,
 		barberID int64,
@@ -44,4 +45,5 @@ type BookingRepository interface {
 		ctx context.Context,
 		telegramUserID int64,
 	) ([]domain.Booking, error)
+	MarkReminderSent(ctx context.Context, bookingID int64) error
 }

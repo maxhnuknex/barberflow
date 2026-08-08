@@ -45,6 +45,10 @@ func (s *BookingService) GetByID(ctx context.Context, bookingID int64) (domain.B
 	return s.bookingRepository.GetByID(ctx, bookingID)
 }
 
+func (s *BookingService) GetBookingsForReminder(ctx context.Context) ([]domain.Booking, error) {
+	return s.bookingRepository.GetBookingsForReminder(ctx)
+}
+
 func (s *BookingService) ListByDate(ctx context.Context, date time.Time) ([]domain.Booking, error) {
 	loc := moscowLocation()
 	selectedDate := date.In(loc)
@@ -180,6 +184,10 @@ func (s *BookingService) ListMyBooking(
 	telegramUserID int64,
 ) ([]domain.Booking, error) {
 	return s.bookingRepository.ListMyBooking(ctx, telegramUserID)
+}
+
+func (s *BookingService) MarkReminderSent(ctx context.Context, bookingID int64) error {
+	return s.bookingRepository.MarkReminderSent(ctx, bookingID)
 }
 
 func moscowLocation() *time.Location {

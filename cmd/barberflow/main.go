@@ -5,9 +5,11 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"time"
 
 	"github.com/go-telegram/bot"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/joho/godotenv"
 	appbarber "github.com/maxhnucknex/barberflow/internal/app/barber"
 	appbooking "github.com/maxhnucknex/barberflow/internal/app/booking"
 	appcatalog "github.com/maxhnucknex/barberflow/internal/app/catalog"
@@ -16,15 +18,21 @@ import (
 	"github.com/maxhnucknex/barberflow/internal/delivery/telegram/mybookings"
 	"github.com/maxhnucknex/barberflow/internal/delivery/telegram/start"
 	"github.com/maxhnucknex/barberflow/internal/repository/postgres"
+	"github.com/maxhnucknex/barberflow/internal/worker/reminder"
 )
 
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
+	_ = godotenv.Load()
+
 	//OS
 	token := os.Getenv("TG_TOKEN")
 	if token == "" {
-		logger.Error("TELEGRAM_BOT_TOKEN is not set")
+		token = os.Getenv("TELEGRAM_BOT_TOKEN")
+	}
+	if token == "" {
+		logger.Error("TG_TOKEN or TELEGRAM_BOT_TOKEN is not set")
 		os.Exit(1)
 	}
 
@@ -86,6 +94,9 @@ func main() {
 
 	adminHandler := admin.NewHandler(bookingService, catalogService, barberService)
 	admin.RegisterHandler(b, adminHandler)
+
+	reminderWorker := reminder.NewWorker(bookingService, b, time.Minute, logger)
+	go reminderWorker.Run(ctx)
 
 	//start
 
