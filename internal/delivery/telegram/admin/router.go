@@ -47,9 +47,44 @@ func RegisterHandler(b *bot.Bot, h *Handler) {
 
 	b.RegisterHandler(
 		bot.HandlerTypeCallbackQueryData,
-		"admin:bookings:find",
+		"admin:services",
 		bot.MatchTypeExact,
-		h.handleBookingsFind,
+		h.handleServices,
+	)
+
+	b.RegisterHandler(
+		bot.HandlerTypeCallbackQueryData,
+		"admin:service:disable:",
+		bot.MatchTypePrefix,
+		h.handleServiceDisable,
+	)
+
+	b.RegisterHandler(
+		bot.HandlerTypeCallbackQueryData,
+		"admin:service:",
+		bot.MatchTypePrefix,
+		h.handleServiceDetail,
+	)
+
+	b.RegisterHandler(
+		bot.HandlerTypeCallbackQueryData,
+		"admin:barbers",
+		bot.MatchTypeExact,
+		h.handleBarbers,
+	)
+
+	b.RegisterHandler(
+		bot.HandlerTypeCallbackQueryData,
+		"admin:barber:disable:",
+		bot.MatchTypePrefix,
+		h.handleBarberDisable,
+	)
+
+	b.RegisterHandler(
+		bot.HandlerTypeCallbackQueryData,
+		"admin:barber:",
+		bot.MatchTypePrefix,
+		h.handleBarberDetail,
 	)
 
 	b.RegisterHandler(

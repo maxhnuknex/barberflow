@@ -8,7 +8,9 @@ import (
 
 	"github.com/go-telegram/bot"
 	"github.com/jackc/pgx/v5/pgxpool"
+	appbarber "github.com/maxhnucknex/barberflow/internal/app/barber"
 	appbooking "github.com/maxhnucknex/barberflow/internal/app/booking"
+	appcatalog "github.com/maxhnucknex/barberflow/internal/app/catalog"
 	"github.com/maxhnucknex/barberflow/internal/delivery/telegram/admin"
 	telegrambooking "github.com/maxhnucknex/barberflow/internal/delivery/telegram/booking"
 	"github.com/maxhnucknex/barberflow/internal/delivery/telegram/mybookings"
@@ -73,6 +75,8 @@ func main() {
 	bookingRepository := postgres.NewBookingRepository(db)
 
 	bookingService := appbooking.NewService(serviceRepository, barberRepository, bookingRepository)
+	catalogService := appcatalog.NewService(serviceRepository)
+	barberService := appbarber.NewService(barberRepository)
 
 	bookingHandler := telegrambooking.NewBookingHandler(bookingService)
 	telegrambooking.RegisterHandler(b, bookingHandler)
@@ -80,7 +84,7 @@ func main() {
 	myBookingsHandler := mybookings.NewHandler(bookingService)
 	mybookings.RegisterHandler(b, myBookingsHandler)
 
-	adminHandler := admin.NewHandler(bookingService)
+	adminHandler := admin.NewHandler(bookingService, catalogService, barberService)
 	admin.RegisterHandler(b, adminHandler)
 
 	//start

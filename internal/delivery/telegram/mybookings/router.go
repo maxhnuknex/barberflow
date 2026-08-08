@@ -9,4 +9,18 @@ func RegisterHandler(b *bot.Bot, h *Handler) {
 		bot.MatchTypeExact,
 		h.HandlerListMyBooking,
 	)
+
+	b.RegisterHandler(
+		bot.HandlerTypeCallbackQueryData,
+		"bookings:cancel:",
+		bot.MatchTypePrefix,
+		h.HandlerCancelBooking,
+	)
+
+	b.RegisterHandler(
+		bot.HandlerTypeCallbackQueryData,
+		"bookings:booking:",
+		bot.MatchTypePrefix,
+		h.HandlerBookingDetail,
+	)
 }

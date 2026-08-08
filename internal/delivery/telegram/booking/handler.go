@@ -10,6 +10,7 @@ import (
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 
+	tgui "github.com/maxhnucknex/barberflow/internal/delivery/telegram/ui"
 	"github.com/maxhnucknex/barberflow/internal/domain"
 )
 
@@ -27,6 +28,8 @@ func NewBookingHandler(
 
 type Service interface {
 	ListActive(ctx context.Context) ([]domain.Service, error)
+	GetServiceByID(ctx context.Context, id int64) (domain.Service, error)
+	GetBarberByID(ctx context.Context, id int64) (domain.Barber, error)
 	ListBarberByService(ctx context.Context, id int64) ([]domain.Barber, error)
 	NextSevenDays() []time.Time
 	ListAvailableSlots(
@@ -51,25 +54,32 @@ func (h *Handler) HandlerListActive(
 	b *bot.Bot,
 	update *models.Update,
 ) {
+	if update.CallbackQuery == nil {
+		return
+	}
+	tgui.AnswerCallbackQuery(ctx, b, update)
+
 	services, err := h.service.ListActive(ctx)
 
 	if err != nil {
+		tgui.Respond(ctx, b, update, actionErrorText, mainMenuKeyboard())
+		return
+	}
+
+	if len(services) == 0 {
+		tgui.Respond(ctx, b, update, "📭 Нет доступных услуг\n\nСейчас запись временно недоступна. Попробуйте позже.", mainMenuKeyboard())
 		return
 	}
 
 	keyboard := serviceKeyboard(services)
 
-	_, err = b.SendMessage(
+	tgui.Respond(
 		ctx,
-		&bot.SendMessageParams{
-			ChatID:      update.CallbackQuery.Message.Message.Chat.ID,
-			Text:        "Выберите услугу:",
-			ReplyMarkup: keyboard,
-		},
+		b,
+		update,
+		"✂️ Выберите услугу\n\nПосле выбора покажем подходящих мастеров и свободное время.",
+		keyboard,
 	)
-	if err != nil {
-		return
-	}
 }
 
 func (h *Handler) HandlerBookingTime(
@@ -80,6 +90,7 @@ func (h *Handler) HandlerBookingTime(
 	if update.CallbackQuery == nil {
 		return
 	}
+	tgui.AnswerCallbackQuery(ctx, b, update)
 
 	const prefix = "booking:time:"
 
@@ -88,26 +99,111 @@ func (h *Handler) HandlerBookingTime(
 
 	parts := strings.Split(rawValues, ":")
 	if len(parts) != 4 {
+		tgui.Respond(ctx, b, update, actionErrorText, mainMenuKeyboard())
 		return
 	}
 
 	serviceID, err := strconv.ParseInt(parts[0], 10, 64)
 	if err != nil {
+		tgui.Respond(ctx, b, update, actionErrorText, mainMenuKeyboard())
 		return
 	}
 
 	barberID, err := strconv.ParseInt(parts[1], 10, 64)
 	if err != nil {
+		tgui.Respond(ctx, b, update, actionErrorText, mainMenuKeyboard())
 		return
 	}
 
 	startUnix, err := strconv.ParseInt(parts[2], 10, 64)
 	if err != nil {
+		tgui.Respond(ctx, b, update, actionErrorText, mainMenuKeyboard())
 		return
 	}
 
 	endUnix, err := strconv.ParseInt(parts[3], 10, 64)
 	if err != nil {
+		tgui.Respond(ctx, b, update, actionErrorText, mainMenuKeyboard())
+		return
+	}
+
+	startsAt := time.Unix(startUnix, 0)
+	endsAt := time.Unix(endUnix, 0)
+
+	service, err := h.service.GetServiceByID(ctx, serviceID)
+	if err != nil {
+		tgui.Respond(ctx, b, update, actionErrorText, mainMenuKeyboard())
+		return
+	}
+
+	barber, err := h.service.GetBarberByID(ctx, barberID)
+	if err != nil {
+		tgui.Respond(ctx, b, update, actionErrorText, mainMenuKeyboard())
+		return
+	}
+
+	slot := domain.TimeInterval{
+		StartsAt: startsAt,
+		EndsAt:   endsAt,
+	}
+
+	text := bookingPreviewText(
+		service,
+		barber,
+		slot,
+	)
+
+	tgui.Respond(
+		ctx,
+		b,
+		update,
+		text,
+		confirmBookingKeyboard(serviceID, barberID, slot),
+	)
+}
+
+func (h *Handler) HandlerConfirmBooking(
+	ctx context.Context,
+	b *bot.Bot,
+	update *models.Update,
+) {
+	if update.CallbackQuery == nil {
+		return
+	}
+	tgui.AnswerCallbackQuery(ctx, b, update)
+
+	const prefix = "booking:confirm:"
+
+	data := update.CallbackQuery.Data
+	rawValues := strings.TrimPrefix(data, prefix)
+
+	parts := strings.Split(rawValues, ":")
+	if len(parts) != 4 {
+		tgui.Respond(ctx, b, update, actionErrorText, mainMenuKeyboard())
+		return
+	}
+
+	serviceID, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		tgui.Respond(ctx, b, update, actionErrorText, mainMenuKeyboard())
+		return
+	}
+
+	barberID, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil {
+		tgui.Respond(ctx, b, update, actionErrorText, mainMenuKeyboard())
+		return
+	}
+
+	startUnix, err := strconv.ParseInt(parts[2], 10, 64)
+	if err != nil {
+		tgui.Respond(ctx, b, update, actionErrorText, mainMenuKeyboard())
+		return
+	}
+
+	endUnix, err := strconv.ParseInt(parts[3], 10, 64)
+	if err != nil {
+		tgui.Respond(ctx, b, update, actionErrorText, mainMenuKeyboard())
 		return
 	}
 
@@ -132,28 +228,19 @@ func (h *Handler) HandlerBookingTime(
 		},
 	)
 	if err != nil {
+		tgui.Respond(ctx, b, update, actionErrorText, mainMenuKeyboard())
 		return
 	}
 
-	text := fmt.Sprintf(
-		"Запись создана:\n\nУслуга: %s\nМастер: %s\nВремя: %s-%s",
-		booking.ServiceName,
-		booking.BarberName,
-		booking.StartsAt.Format("15:04"),
-		booking.EndsAt.Format("15:04"),
-	)
+	text := createdBookingText(booking)
 
-	_, err = b.SendMessage(
+	tgui.Respond(
 		ctx,
-		&bot.SendMessageParams{
-			ChatID:      update.CallbackQuery.Message.Message.Chat.ID,
-			Text:        text,
-			ReplyMarkup: mainMenuKeyboard(),
-		},
+		b,
+		update,
+		text,
+		createdBookingKeyboard(),
 	)
-	if err != nil {
-		return
-	}
 }
 
 func (h *Handler) HandleSelectDate(
@@ -164,6 +251,7 @@ func (h *Handler) HandleSelectDate(
 	if update.CallbackQuery == nil {
 		return
 	}
+	tgui.AnswerCallbackQuery(ctx, b, update)
 
 	const prefix = "booking:date:"
 
@@ -172,26 +260,42 @@ func (h *Handler) HandleSelectDate(
 
 	parts := strings.Split(rawValues, ":")
 	if len(parts) != 3 {
+		tgui.Respond(ctx, b, update, actionErrorText, mainMenuKeyboard())
 		return
 	}
 
 	serviceID, err := strconv.ParseInt(parts[0], 10, 64)
 	if err != nil {
+		tgui.Respond(ctx, b, update, actionErrorText, mainMenuKeyboard())
 		return
 	}
 
 	barberID, err := strconv.ParseInt(parts[1], 10, 64)
 	if err != nil {
+		tgui.Respond(ctx, b, update, actionErrorText, mainMenuKeyboard())
 		return
 	}
 
 	selectedDate, err := time.ParseInLocation("2006-01-02", parts[2], moscowLocation())
 	if err != nil {
+		tgui.Respond(ctx, b, update, actionErrorText, mainMenuKeyboard())
 		return
 	}
 
 	freeSlot, err := h.service.ListAvailableSlots(ctx, serviceID, barberID, selectedDate)
 	if err != nil {
+		tgui.Respond(ctx, b, update, actionErrorText, mainMenuKeyboard())
+		return
+	}
+
+	if len(freeSlot) == 0 {
+		tgui.Respond(
+			ctx,
+			b,
+			update,
+			"📭 Нет свободного времени\n\nНа выбранную дату все интервалы заняты. Выберите другой день.",
+			keyboardDate(serviceID, barberID, h.service.NextSevenDays()),
+		)
 		return
 	}
 
@@ -201,17 +305,13 @@ func (h *Handler) HandleSelectDate(
 		freeSlot,
 	)
 
-	_, err = b.SendMessage(
+	tgui.Respond(
 		ctx,
-		&bot.SendMessageParams{
-			ChatID:      update.CallbackQuery.Message.Message.Chat.ID,
-			Text:        "выберите время записи",
-			ReplyMarkup: keyboard,
-		},
+		b,
+		update,
+		fmt.Sprintf("🕒 Выберите время\n\nСвободные интервалы на %s:", tgui.DayMonth(selectedDate)),
+		keyboard,
 	)
-	if err != nil {
-		return
-	}
 }
 
 func (h *Handler) HandlerListBarber(
@@ -219,29 +319,40 @@ func (h *Handler) HandlerListBarber(
 	b *bot.Bot,
 	update *models.Update,
 ) {
+	if update.CallbackQuery == nil {
+		return
+	}
+	tgui.AnswerCallbackQuery(ctx, b, update)
+
 	data := update.CallbackQuery.Data
 	const prefix = "booking:service:"
 	idStr := strings.TrimPrefix(data, prefix)
 	serviceID, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
+		tgui.Respond(ctx, b, update, actionErrorText, mainMenuKeyboard())
 		return
 	}
 
 	barbers, err := h.service.ListBarberByService(ctx, serviceID)
 	if err != nil {
+		tgui.Respond(ctx, b, update, actionErrorText, mainMenuKeyboard())
+		return
+	}
+
+	if len(barbers) == 0 {
+		tgui.Respond(
+			ctx,
+			b,
+			update,
+			"📭 Нет доступных мастеров\n\nДля выбранной услуги сейчас нет доступных специалистов. Выберите другую услугу.",
+			barberKeyboard(serviceID, nil),
+		)
 		return
 	}
 
 	keyboard := barberKeyboard(serviceID, barbers)
 
-	_, err = b.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID:      update.CallbackQuery.Message.Message.Chat.ID,
-		Text:        "Выберите мастера:",
-		ReplyMarkup: keyboard,
-	})
-	if err != nil {
-		return
-	}
+	tgui.Respond(ctx, b, update, "💈 Выберите мастера\n\nВыберите специалиста, к которому хотите записаться.", keyboard)
 }
 
 func (h *Handler) HandlerListTimeBarberActive(
@@ -252,6 +363,7 @@ func (h *Handler) HandlerListTimeBarberActive(
 	if update.CallbackQuery == nil {
 		return
 	}
+	tgui.AnswerCallbackQuery(ctx, b, update)
 
 	const prefix = "booking:barber:"
 
@@ -260,32 +372,31 @@ func (h *Handler) HandlerListTimeBarberActive(
 
 	parts := strings.Split(rawIDs, ":")
 	if len(parts) != 2 {
+		tgui.Respond(ctx, b, update, actionErrorText, mainMenuKeyboard())
 		return
 	}
 
 	serviceID, err := strconv.ParseInt(parts[0], 10, 64)
 	if err != nil {
+		tgui.Respond(ctx, b, update, actionErrorText, mainMenuKeyboard())
 		return
 	}
 
 	barberID, err := strconv.ParseInt(parts[1], 10, 64)
 	if err != nil {
+		tgui.Respond(ctx, b, update, actionErrorText, mainMenuKeyboard())
 		return
 	}
 
 	keyboard := keyboardDate(serviceID, barberID, h.service.NextSevenDays())
 
-	_, err = b.SendMessage(
+	tgui.Respond(
 		ctx,
-		&bot.SendMessageParams{
-			ChatID:      update.CallbackQuery.Message.Message.Chat.ID,
-			Text:        "выберите дату записи",
-			ReplyMarkup: keyboard,
-		},
+		b,
+		update,
+		"📅 Выберите дату\n\nДоступна запись на ближайшие 7 дней.",
+		keyboard,
 	)
-	if err != nil {
-		return
-	}
 }
 
 func moscowLocation() *time.Location {
@@ -295,4 +406,32 @@ func moscowLocation() *time.Location {
 	}
 
 	return loc
+}
+
+const actionErrorText = "⚠️ Не удалось выполнить действие\n\nПопробуйте ещё раз или вернитесь в главное меню."
+
+func bookingPreviewText(
+	service domain.Service,
+	barber domain.Barber,
+	slot domain.TimeInterval,
+) string {
+	return fmt.Sprintf(
+		"✅ Проверьте запись\n\n✂️ Услуга: %s\n💈 Мастер: %s\n📅 Дата: %s\n🕒 Время: %s\n💳 Стоимость: %s\n\nВсё верно?",
+		service.Name,
+		barber.Name,
+		tgui.FullDate(slot.StartsAt),
+		tgui.TimeInterval(slot.StartsAt, slot.EndsAt),
+		tgui.Price(service.PriceMinorUnits),
+	)
+}
+
+func createdBookingText(booking domain.Booking) string {
+	return fmt.Sprintf(
+		"🎉 Запись подтверждена\n\n✂️ Услуга: %s\n💈 Мастер: %s\n📅 Дата: %s\n🕒 Время: %s\n💳 Стоимость: %s\n\nЗапись сохранена в разделе «Мои записи».",
+		booking.ServiceName,
+		booking.BarberName,
+		tgui.FullDate(booking.StartsAt),
+		tgui.TimeInterval(booking.StartsAt, booking.EndsAt),
+		tgui.Price(booking.PriceMinorUnits),
+	)
 }

@@ -40,4 +40,11 @@ func RegisterHandler(b *bot.Bot, h *Handler) {
 		h.HandlerBookingTime,
 	)
 
+	b.RegisterHandler(
+		bot.HandlerTypeCallbackQueryData,
+		"booking:confirm",
+		bot.MatchTypePrefix,
+		h.HandlerConfirmBooking,
+	)
+
 }

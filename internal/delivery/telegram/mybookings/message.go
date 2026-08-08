@@ -4,28 +4,30 @@ import (
 	"fmt"
 	"strings"
 
+	tgui "github.com/maxhnucknex/barberflow/internal/delivery/telegram/ui"
 	"github.com/maxhnucknex/barberflow/internal/domain"
 )
 
-func myBookingsText(bookings []domain.Booking) string {
+func myBookingsListText(bookings []domain.Booking) string {
 	if len(bookings) == 0 {
-		return "У вас пока нет активных записей."
+		return "📭 Нет активных записей\n\nВы можете создать новую запись за пару минут."
 	}
 
+	return "📋 Мои записи\n\nВыберите запись, чтобы посмотреть подробности."
+}
+
+func bookingDetailText(booking domain.Booking) string {
 	var builder strings.Builder
-	builder.WriteString("Ваши записи:")
+	builder.WriteString("📋 Ваша запись")
 
-	for i, booking := range bookings {
-		fmt.Fprintf(
-			&builder,
-			"\n\n%d. Услуга: %s\nМастер: %s\nВремя: %s-%s",
-			i+1,
-			booking.ServiceName,
-			booking.BarberName,
-			booking.StartsAt.Format("02.01.2006 15:04"),
-			booking.EndsAt.Format("15:04"),
-		)
-	}
-
+	fmt.Fprintf(
+		&builder,
+		"\n\n✂️ Услуга: %s\n💈 Мастер: %s\n📅 Дата: %s\n🕒 Время: %s\n💳 Стоимость: %s",
+		booking.ServiceName,
+		booking.BarberName,
+		tgui.FullDate(booking.StartsAt),
+		tgui.TimeInterval(booking.StartsAt, booking.EndsAt),
+		tgui.Price(booking.PriceMinorUnits),
+	)
 	return builder.String()
 }

@@ -39,6 +39,42 @@ func (r *BarberRepository) GetByID(ctx context.Context, id int64) (domain.Barber
 	return barber, nil
 }
 
+func (r *BarberRepository) ListAll(ctx context.Context) ([]domain.Barber, error) {
+	const query = `
+		SELECT id, name, active, created_at
+		FROM barbers
+		ORDER BY id
+	`
+
+	rows, err := r.db.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("list all barbers: %w", err)
+	}
+	defer rows.Close()
+
+	barbers := make([]domain.Barber, 0)
+	for rows.Next() {
+		var barber domain.Barber
+
+		if err := rows.Scan(
+			&barber.ID,
+			&barber.Name,
+			&barber.Active,
+			&barber.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan barber: %w", err)
+		}
+
+		barbers = append(barbers, barber)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate barbers: %w", err)
+	}
+
+	return barbers, nil
+}
+
 func (r *BarberRepository) GetTimeActive(
 	ctx context.Context,
 	id int64,
@@ -111,4 +147,18 @@ func (r *BarberRepository) ListBarberByService(
 	}
 
 	return barbers, nil
+}
+
+func (r *BarberRepository) SetActive(ctx context.Context, id int64, active bool) error {
+	const query = `
+		UPDATE barbers
+		SET active = $2
+		WHERE id = $1
+	`
+
+	if _, err := r.db.Exec(ctx, query, id, active); err != nil {
+		return fmt.Errorf("set barber active: %w", err)
+	}
+
+	return nil
 }

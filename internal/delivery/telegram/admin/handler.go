@@ -9,16 +9,25 @@ import (
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
+	tgui "github.com/maxhnucknex/barberflow/internal/delivery/telegram/ui"
 	"github.com/maxhnucknex/barberflow/internal/domain"
 )
 
 type Handler struct {
-	service BookingService
+	bookingService BookingService
+	catalogService CatalogService
+	barberService  BarberService
 }
 
-func NewHandler(service BookingService) *Handler {
+func NewHandler(
+	bookingService BookingService,
+	catalogService CatalogService,
+	barberService BarberService,
+) *Handler {
 	return &Handler{
-		service: service,
+		bookingService: bookingService,
+		catalogService: catalogService,
+		barberService:  barberService,
 	}
 }
 
@@ -29,24 +38,36 @@ type BookingService interface {
 	NextSevenDays() []time.Time
 }
 
+type CatalogService interface {
+	GetByID(ctx context.Context, id int64) (domain.Service, error)
+	ListAll(ctx context.Context) ([]domain.Service, error)
+	SetActive(ctx context.Context, id int64, active bool) error
+}
+
+type BarberService interface {
+	GetByID(ctx context.Context, id int64) (domain.Barber, error)
+	ListAll(ctx context.Context) ([]domain.Barber, error)
+	SetActive(ctx context.Context, id int64, active bool) error
+}
+
 func (h *Handler) adminStart(
 	ctx context.Context,
 	b *bot.Bot,
 	update *models.Update,
 ) {
+	if update.CallbackQuery != nil {
+		tgui.AnswerCallbackQuery(ctx, b, update)
+	}
+
 	keyboard := keyboardAdminStart()
 
-	_, err := b.SendMessage(
+	tgui.Respond(
 		ctx,
-		&bot.SendMessageParams{
-			ChatID:      chatID(update),
-			Text:        "Админ-панель",
-			ReplyMarkup: keyboard,
-		},
+		b,
+		update,
+		"🛠 Админ-панель\n\nУправление записями, услугами и мастерами.",
+		keyboard,
 	)
-	if err != nil {
-		return
-	}
 }
 
 func (h *Handler) handleBookingsMenu(
@@ -57,18 +78,15 @@ func (h *Handler) handleBookingsMenu(
 	if update.CallbackQuery == nil {
 		return
 	}
+	tgui.AnswerCallbackQuery(ctx, b, update)
 
-	_, err := b.SendMessage(
+	tgui.Respond(
 		ctx,
-		&bot.SendMessageParams{
-			ChatID:      update.CallbackQuery.Message.Message.Chat.ID,
-			Text:        "Записи",
-			ReplyMarkup: keyboardBookingsMenu(),
-		},
+		b,
+		update,
+		"📋 Управление записями\n\nВыберите период просмотра.",
+		keyboardBookingsMenu(),
 	)
-	if err != nil {
-		return
-	}
 }
 
 func (h *Handler) handleBookingsToday(
@@ -79,23 +97,22 @@ func (h *Handler) handleBookingsToday(
 	if update.CallbackQuery == nil {
 		return
 	}
+	tgui.AnswerCallbackQuery(ctx, b, update)
 
-	bookings, err := h.service.ListByDate(ctx, time.Now().In(moscowLocation()))
+	bookings, err := h.bookingService.ListByDate(ctx, time.Now().In(moscowLocation()))
 	if err != nil {
+		tgui.Respond(ctx, b, update, actionErrorText, keyboardBookingsMenu())
 		return
 	}
 
-	_, err = b.SendMessage(
+	selectedDate := time.Now().In(moscowLocation())
+	tgui.Respond(
 		ctx,
-		&bot.SendMessageParams{
-			ChatID:      update.CallbackQuery.Message.Message.Chat.ID,
-			Text:        bookingsListText(bookings),
-			ReplyMarkup: keyboardBookingsList(bookings),
-		},
+		b,
+		update,
+		bookingsListText(bookings, selectedDate, true),
+		keyboardBookingsList(bookings),
 	)
-	if err != nil {
-		return
-	}
 }
 
 func (h *Handler) handleBookingsDateMenu(
@@ -106,18 +123,15 @@ func (h *Handler) handleBookingsDateMenu(
 	if update.CallbackQuery == nil {
 		return
 	}
+	tgui.AnswerCallbackQuery(ctx, b, update)
 
-	_, err := b.SendMessage(
+	tgui.Respond(
 		ctx,
-		&bot.SendMessageParams{
-			ChatID:      update.CallbackQuery.Message.Message.Chat.ID,
-			Text:        "Записи на дату",
-			ReplyMarkup: keyboardBookingsDate(h.service.NextSevenDays()),
-		},
+		b,
+		update,
+		"📅 Выберите дату\n\nПоказаны ближайшие 7 дней.",
+		keyboardBookingsDate(h.bookingService.NextSevenDays()),
 	)
-	if err != nil {
-		return
-	}
 }
 
 func (h *Handler) handleBookingsDate(
@@ -128,31 +142,30 @@ func (h *Handler) handleBookingsDate(
 	if update.CallbackQuery == nil {
 		return
 	}
+	tgui.AnswerCallbackQuery(ctx, b, update)
 
 	const prefix = "admin:bookings:date:"
 
 	rawDate := strings.TrimPrefix(update.CallbackQuery.Data, prefix)
 	selectedDate, err := time.ParseInLocation("2006-01-02", rawDate, moscowLocation())
 	if err != nil {
+		tgui.Respond(ctx, b, update, actionErrorText, keyboardBookingsMenu())
 		return
 	}
 
-	bookings, err := h.service.ListByDate(ctx, selectedDate)
+	bookings, err := h.bookingService.ListByDate(ctx, selectedDate)
 	if err != nil {
+		tgui.Respond(ctx, b, update, actionErrorText, keyboardBookingsMenu())
 		return
 	}
 
-	_, err = b.SendMessage(
+	tgui.Respond(
 		ctx,
-		&bot.SendMessageParams{
-			ChatID:      update.CallbackQuery.Message.Message.Chat.ID,
-			Text:        bookingsListText(bookings),
-			ReplyMarkup: keyboardBookingsList(bookings),
-		},
+		b,
+		update,
+		bookingsListText(bookings, selectedDate, false),
+		keyboardBookingsList(bookings),
 	)
-	if err != nil {
-		return
-	}
 }
 
 func (h *Handler) handleBookingDetail(
@@ -163,31 +176,24 @@ func (h *Handler) handleBookingDetail(
 	if update.CallbackQuery == nil {
 		return
 	}
+	tgui.AnswerCallbackQuery(ctx, b, update)
 
 	const prefix = "admin:booking:"
 
 	rawID := strings.TrimPrefix(update.CallbackQuery.Data, prefix)
 	bookingID, err := strconv.ParseInt(rawID, 10, 64)
 	if err != nil {
+		tgui.Respond(ctx, b, update, actionErrorText, keyboardBookingsMenu())
 		return
 	}
 
-	booking, err := h.service.GetByID(ctx, bookingID)
+	booking, err := h.bookingService.GetByID(ctx, bookingID)
 	if err != nil {
+		tgui.Respond(ctx, b, update, "⚠️ Запись не найдена\n\nВозможно, она уже была отменена.", keyboardBookingsMenu())
 		return
 	}
 
-	_, err = b.SendMessage(
-		ctx,
-		&bot.SendMessageParams{
-			ChatID:      update.CallbackQuery.Message.Message.Chat.ID,
-			Text:        bookingDetailText(booking),
-			ReplyMarkup: keyboardBookingDetail(booking.ID),
-		},
-	)
-	if err != nil {
-		return
-	}
+	tgui.Respond(ctx, b, update, bookingDetailText(booking), keyboardBookingDetail(booking.ID))
 }
 
 func (h *Handler) handleBookingCancel(
@@ -198,33 +204,26 @@ func (h *Handler) handleBookingCancel(
 	if update.CallbackQuery == nil {
 		return
 	}
+	tgui.AnswerCallbackQuery(ctx, b, update)
 
 	const prefix = "admin:booking:cancel:"
 
 	rawID := strings.TrimPrefix(update.CallbackQuery.Data, prefix)
 	bookingID, err := strconv.ParseInt(rawID, 10, 64)
 	if err != nil {
+		tgui.Respond(ctx, b, update, actionErrorText, keyboardBookingsMenu())
 		return
 	}
 
-	if err := h.service.Cancel(ctx, bookingID); err != nil {
+	if err := h.bookingService.Cancel(ctx, bookingID); err != nil {
+		tgui.Respond(ctx, b, update, actionErrorText, keyboardBookingsMenu())
 		return
 	}
 
-	_, err = b.SendMessage(
-		ctx,
-		&bot.SendMessageParams{
-			ChatID:      update.CallbackQuery.Message.Message.Chat.ID,
-			Text:        "Запись отменена",
-			ReplyMarkup: keyboardBookingsMenu(),
-		},
-	)
-	if err != nil {
-		return
-	}
+	tgui.Respond(ctx, b, update, "✅ Запись отменена\n\nЗапись больше не отображается среди активных.", keyboardBookingCanceled())
 }
 
-func (h *Handler) handleBookingsFind(
+func (h *Handler) handleServices(
 	ctx context.Context,
 	b *bot.Bot,
 	update *models.Update,
@@ -232,40 +231,230 @@ func (h *Handler) handleBookingsFind(
 	if update.CallbackQuery == nil {
 		return
 	}
+	tgui.AnswerCallbackQuery(ctx, b, update)
 
-	_, err := b.SendMessage(
-		ctx,
-		&bot.SendMessageParams{
-			ChatID:      update.CallbackQuery.Message.Message.Chat.ID,
-			Text:        "В разработке",
-			ReplyMarkup: keyboardBookingsMenu(),
-		},
-	)
+	services, err := h.catalogService.ListAll(ctx)
 	if err != nil {
+		tgui.Respond(ctx, b, update, actionErrorText, keyboardAdminStart())
 		return
 	}
-}
 
-func bookingsListText(bookings []domain.Booking) string {
-	if len(bookings) == 0 {
-		return "Записей нет"
+	if len(services) == 0 {
+		tgui.Respond(ctx, b, update, "📭 Услуг нет\n\nВ каталоге пока нет услуг.", keyboardAdminStart())
+		return
 	}
 
-	return "Записи"
+	tgui.Respond(ctx, b, update, "✂️ Услуги\n\nВыберите услугу для просмотра.", keyboardServicesList(services))
 }
+
+func (h *Handler) handleServiceDetail(
+	ctx context.Context,
+	b *bot.Bot,
+	update *models.Update,
+) {
+	if update.CallbackQuery == nil {
+		return
+	}
+	tgui.AnswerCallbackQuery(ctx, b, update)
+
+	const prefix = "admin:service:"
+
+	rawID := strings.TrimPrefix(update.CallbackQuery.Data, prefix)
+	serviceID, err := strconv.ParseInt(rawID, 10, 64)
+	if err != nil {
+		tgui.Respond(ctx, b, update, actionErrorText, keyboardBackToServices())
+		return
+	}
+
+	service, err := h.catalogService.GetByID(ctx, serviceID)
+	if err != nil {
+		tgui.Respond(ctx, b, update, actionErrorText, keyboardBackToServices())
+		return
+	}
+
+	tgui.Respond(ctx, b, update, serviceDetailText(service), keyboardServiceDetail(service))
+}
+
+func (h *Handler) handleServiceDisable(
+	ctx context.Context,
+	b *bot.Bot,
+	update *models.Update,
+) {
+	if update.CallbackQuery == nil {
+		return
+	}
+	tgui.AnswerCallbackQuery(ctx, b, update)
+
+	const prefix = "admin:service:disable:"
+
+	rawID := strings.TrimPrefix(update.CallbackQuery.Data, prefix)
+	serviceID, err := strconv.ParseInt(rawID, 10, 64)
+	if err != nil {
+		tgui.Respond(ctx, b, update, actionErrorText, keyboardBackToServices())
+		return
+	}
+
+	if err := h.catalogService.SetActive(ctx, serviceID, false); err != nil {
+		tgui.Respond(ctx, b, update, actionErrorText, keyboardBackToServices())
+		return
+	}
+
+	service, err := h.catalogService.GetByID(ctx, serviceID)
+	if err != nil {
+		tgui.Respond(ctx, b, update, actionErrorText, keyboardBackToServices())
+		return
+	}
+
+	tgui.Respond(ctx, b, update, serviceDetailText(service), keyboardServiceDetail(service))
+}
+
+func (h *Handler) handleBarbers(
+	ctx context.Context,
+	b *bot.Bot,
+	update *models.Update,
+) {
+	if update.CallbackQuery == nil {
+		return
+	}
+	tgui.AnswerCallbackQuery(ctx, b, update)
+
+	barbers, err := h.barberService.ListAll(ctx)
+	if err != nil {
+		tgui.Respond(ctx, b, update, actionErrorText, keyboardAdminStart())
+		return
+	}
+
+	if len(barbers) == 0 {
+		tgui.Respond(ctx, b, update, "📭 Мастеров нет\n\nВ системе пока нет мастеров.", keyboardAdminStart())
+		return
+	}
+
+	tgui.Respond(ctx, b, update, "💈 Мастера\n\nВыберите мастера для просмотра.", keyboardBarbersList(barbers))
+}
+
+func (h *Handler) handleBarberDetail(
+	ctx context.Context,
+	b *bot.Bot,
+	update *models.Update,
+) {
+	if update.CallbackQuery == nil {
+		return
+	}
+	tgui.AnswerCallbackQuery(ctx, b, update)
+
+	const prefix = "admin:barber:"
+
+	rawID := strings.TrimPrefix(update.CallbackQuery.Data, prefix)
+	barberID, err := strconv.ParseInt(rawID, 10, 64)
+	if err != nil {
+		tgui.Respond(ctx, b, update, actionErrorText, keyboardBackToBarbers())
+		return
+	}
+
+	barber, err := h.barberService.GetByID(ctx, barberID)
+	if err != nil {
+		tgui.Respond(ctx, b, update, actionErrorText, keyboardBackToBarbers())
+		return
+	}
+
+	tgui.Respond(ctx, b, update, barberDetailText(barber), keyboardBarberDetail(barber))
+}
+
+func (h *Handler) handleBarberDisable(
+	ctx context.Context,
+	b *bot.Bot,
+	update *models.Update,
+) {
+	if update.CallbackQuery == nil {
+		return
+	}
+	tgui.AnswerCallbackQuery(ctx, b, update)
+
+	const prefix = "admin:barber:disable:"
+
+	rawID := strings.TrimPrefix(update.CallbackQuery.Data, prefix)
+	barberID, err := strconv.ParseInt(rawID, 10, 64)
+	if err != nil {
+		tgui.Respond(ctx, b, update, actionErrorText, keyboardBackToBarbers())
+		return
+	}
+
+	if err := h.barberService.SetActive(ctx, barberID, false); err != nil {
+		tgui.Respond(ctx, b, update, actionErrorText, keyboardBackToBarbers())
+		return
+	}
+
+	barber, err := h.barberService.GetByID(ctx, barberID)
+	if err != nil {
+		tgui.Respond(ctx, b, update, actionErrorText, keyboardBackToBarbers())
+		return
+	}
+
+	tgui.Respond(ctx, b, update, barberDetailText(barber), keyboardBarberDetail(barber))
+}
+
+func bookingsListText(bookings []domain.Booking, selectedDate time.Time, today bool) string {
+	if len(bookings) == 0 {
+		return "📭 Записей нет\n\nНа выбранную дату активных записей нет."
+	}
+
+	title := fmt.Sprintf("📋 Записи на %s", tgui.DayMonth(selectedDate))
+	if today {
+		title = "📋 Записи на сегодня"
+	}
+
+	return fmt.Sprintf("%s\n\nНайдено записей: %d.\n\nВыберите запись для просмотра.", title, len(bookings))
+}
+
+const actionErrorText = "⚠️ Не удалось выполнить действие\n\nПопробуйте ещё раз или вернитесь в админ-панель."
 
 func bookingDetailText(booking domain.Booking) string {
 	return fmt.Sprintf(
-		"ID: %d\nКлиент: %s\nМастер: %s\nУслуга: %s\nДата: %s\nВремя: %s-%s\nЦена: %d ₽",
+		"📋 Запись #%d\n\n🙍 Клиент: %s\n✂️ Услуга: %s\n💈 Мастер: %s\n📅 Дата: %s\n🕒 Время: %s\n💳 Стоимость: %s",
 		booking.ID,
 		customerText(booking),
-		booking.BarberName,
 		booking.ServiceName,
-		booking.StartsAt.Format("02.01.2006"),
-		booking.StartsAt.Format("15:04"),
-		booking.EndsAt.Format("15:04"),
-		booking.PriceMinorUnits/100,
+		booking.BarberName,
+		tgui.FullDate(booking.StartsAt),
+		tgui.TimeInterval(booking.StartsAt, booking.EndsAt),
+		tgui.Price(booking.PriceMinorUnits),
 	)
+}
+
+func serviceDetailText(service domain.Service) string {
+	return fmt.Sprintf(
+		"✂️ Услуга #%d\n\nНазвание: %s\n⏱ Длительность: %d мин\n💳 Стоимость: %s\nСтатус: %s",
+		service.ID,
+		service.Name,
+		service.DurationMinutes,
+		tgui.Price(service.PriceMinorUnits),
+		serviceStatusText(service.Active),
+	)
+}
+
+func barberDetailText(barber domain.Barber) string {
+	return fmt.Sprintf(
+		"💈 Мастер #%d\n\nИмя: %s\nСтатус: %s",
+		barber.ID,
+		barber.Name,
+		barberStatusText(barber.Active),
+	)
+}
+
+func serviceStatusText(active bool) string {
+	if active {
+		return "✅ Активна"
+	}
+
+	return "⛔ Отключена"
+}
+
+func barberStatusText(active bool) string {
+	if active {
+		return "✅ Работает"
+	}
+
+	return "⛔ Отключён"
 }
 
 func customerText(booking domain.Booking) string {
@@ -283,12 +472,4 @@ func moscowLocation() *time.Location {
 	}
 
 	return loc
-}
-
-func chatID(update *models.Update) int64 {
-	if update.Message != nil {
-		return update.Message.Chat.ID
-	}
-
-	return update.CallbackQuery.Message.Message.Chat.ID
 }

@@ -29,6 +29,14 @@ func (s *BookingService) ListActive(ctx context.Context) ([]domain.Service, erro
 	return s.serviceRepo.ListActive(ctx)
 }
 
+func (s *BookingService) GetServiceByID(ctx context.Context, id int64) (domain.Service, error) {
+	return s.serviceRepo.GetByID(ctx, id)
+}
+
+func (s *BookingService) GetBarberByID(ctx context.Context, id int64) (domain.Barber, error) {
+	return s.barberRepo.GetByID(ctx, id)
+}
+
 func (s *BookingService) Cancel(ctx context.Context, bookingID int64) error {
 	return s.bookingRepository.Cancel(ctx, bookingID)
 }
