@@ -32,19 +32,6 @@ BarberFlow — Telegram-бот для записи клиентов в барб�
 - включение/отключение доступности услуг и мастеров через административное меню.
 
 
-## Screenshots
-
-<table>
-  <tr>
-    <td align="center"><img src="docs/screenshots/booking-flow.png" alt="Booking flow" width="300"><br><sub>Создание записи</sub></td>
-    <td align="center"><img src="docs/screenshots/booking-confirmation.png" alt="Booking confirmation" width="300"><br><sub>Подтверждение записи</sub></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="docs/screenshots/my-bookings.png" alt="My bookings" width="300"><br><sub>Мои записи</sub></td>
-    <td align="center"><img src="docs/screenshots/reminder.png" alt="Booking reminder" width="300"><br><sub>Напоминание о визите</sub></td>
-  </tr>
-</table>
-
 ## Стек
 
 - **Go** — приложение и бизнес-логика;
