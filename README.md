@@ -2,7 +2,7 @@
 
 # BarberFlow
 
-**Telegram-система записи для барбершопа на Go с PostgreSQL, фоновыми напоминаниями и Docker Compose.**
+**Telegram-сервис онлайн-записи для барбершопов, который позволяет клиентам самостоятельно бронировать визиты, а администратору управлять записями, и отправляет напоминания.**
 
 [![CI](https://github.com/maxhnuknex/barberflow/actions/workflows/ci.yml/badge.svg)](https://github.com/maxhnuknex/barberflow/actions/workflows/ci.yml)
 
@@ -31,45 +31,6 @@ BarberFlow — Telegram-бот для записи клиентов в барб�
 - просмотр услуг и мастеров;
 - включение/отключение доступности услуг и мастеров через административное меню.
 
-**Инфраструктура**
-- PostgreSQL как постоянное хранилище;
-- SQL migrations через `golang-migrate`;
-- background reminder worker;
-- graceful shutdown через `context`;
-- Docker Compose для запуска приложения, базы и миграций;
-- GitHub Actions CI с форматированием, `go vet`, тестами, race detector и сборкой.
-
-## Пользовательский сценарий
-
-Основной booking flow:
-
-```text
-/start
-  → выбрать услугу
-  → выбрать мастера
-  → выбрать дату
-  → выбрать свободное время
-  → подтвердить
-  → запись сохранена
-```
-
-Управление записью:
-
-```text
-Мои записи
-  → выбрать запись
-  → посмотреть детали
-  → отменить
-```
-
-Напоминание:
-
-```text
-Reminder Worker
-  → находит ближайшие записи без отправленного reminder
-  → отправляет сообщение клиенту
-  → отмечает reminder как отправленный
-```
 
 ## Screenshots
 
@@ -152,36 +113,6 @@ docker compose up --build
 
 Docker Compose последовательно запускает PostgreSQL, применяет migrations и после их успешного завершения запускает BarberFlow.
 
-## Конфигурация
-
-Приложение использует переменные окружения:
-
-| Переменная | Назначение |
-|---|---|
-| `TG_TOKEN` | Telegram Bot Token |
-| `TELEGRAM_BOT_TOKEN` | альтернативное имя Telegram token, поддерживаемое приложением |
-| `DATABASE_URL` | PostgreSQL connection string |
-| `POSTGRES_DB` | имя базы для PostgreSQL container |
-| `POSTGRES_USER` | пользователь PostgreSQL |
-| `POSTGRES_PASSWORD` | пароль PostgreSQL |
-
-Секреты не должны коммититься в репозиторий.
-
-## Docker и migrations
-
-Startup sequence:
-
-```text
-PostgreSQL
-   ↓ service_healthy
-migrate
-   ↓ service_completed_successfully
-BarberFlow
-```
-
-`compose.yaml` использует отдельный `migrate/migrate` container. Он получает каталог `migrations/`, подключается к PostgreSQL и применяет только ещё не выполненные `up`-миграции.
-
-Текущая схема развивается последовательными SQL migrations, включая отдельную миграцию для состояния отправки booking reminder.
 
 ## Тестирование
 
@@ -194,11 +125,6 @@ go test ./...
 go test -race ./...
 go build ./cmd/barberflow
 ```
-
-Существующие тесты проверяют application-логику booking и Telegram presentation layer: формирование сообщений, клавиатур, callback data и отдельные административные сценарии.
-
-Тот же базовый набор проверок автоматически выполняется в GitHub Actions CI для `push` и `pull_request` в `main`.
-
 ## Структура проекта
 
 ```text
