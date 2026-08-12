@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"time"
@@ -14,9 +15,11 @@ import (
 	appbooking "github.com/maxhnucknex/barberflow/internal/app/booking"
 	appcatalog "github.com/maxhnucknex/barberflow/internal/app/catalog"
 	"github.com/maxhnucknex/barberflow/internal/delivery/telegram/admin"
+	"github.com/maxhnucknex/barberflow/internal/delivery/telegram/ai"
 	telegrambooking "github.com/maxhnucknex/barberflow/internal/delivery/telegram/booking"
 	"github.com/maxhnucknex/barberflow/internal/delivery/telegram/mybookings"
 	"github.com/maxhnucknex/barberflow/internal/delivery/telegram/start"
+	"github.com/maxhnucknex/barberflow/internal/integration/llm/groq"
 	"github.com/maxhnucknex/barberflow/internal/repository/postgres"
 	"github.com/maxhnucknex/barberflow/internal/worker/reminder"
 )
@@ -40,6 +43,17 @@ func main() {
 	if databaseURL == "" {
 		logger.Error("DATABASE_URL is not set")
 		os.Exit(1)
+	}
+
+	groqAPIKey := os.Getenv("GROQ_API_KEY")
+	if groqAPIKey == "" {
+		logger.Error("GROQ_API_KEY is not set")
+		os.Exit(1)
+	}
+
+	groqModel := os.Getenv("GROQ_MODEL")
+	if groqModel == "" {
+		groqModel = "llama-3.3-70b-versatile"
 	}
 
 	//CTX
@@ -94,6 +108,10 @@ func main() {
 
 	adminHandler := admin.NewHandler(bookingService, catalogService, barberService)
 	admin.RegisterHandler(b, adminHandler)
+
+	groqClient := groq.NewClient(groqAPIKey, groqModel, &http.Client{Timeout: 30 * time.Second})
+	aiHandler := ai.NewHandler(groqClient, logger)
+	ai.RegisterHandler(b, aiHandler)
 
 	reminderWorker := reminder.NewWorker(bookingService, b, time.Minute, logger)
 	go reminderWorker.Run(ctx)
